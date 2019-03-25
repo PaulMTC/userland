@@ -159,6 +159,8 @@ typedef struct
 
    RASPITEX_STATE raspitex_state; /// GL renderer state and parameters
 
+   MMAL_PARAM_FLASH_T flash; /// Flash mode
+
 } RASPISTILL_STATE;
 
 /** Struct used to pass information in encoder port userdata to callback
@@ -194,6 +196,7 @@ enum
    CommandTimeStamp,
    CommandFrameStart,
    CommandRestartInterval,
+   CommandFlashMode
 };
 
 static COMMAND_LIST cmdline_commands[] =
@@ -217,6 +220,7 @@ static COMMAND_LIST cmdline_commands[] =
    { CommandTimeStamp, "-timestamp", "ts", "Replace output pattern (%d) with unix timestamp (seconds since 1970)", 0},
    { CommandFrameStart,"-framestart","fs",  "Starting frame number in output pattern(%d)", 1},
    { CommandRestartInterval, "-restart","rs","JPEG Restart interval (default of 0 for none)", 1},
+   { CommandFlashMode, "-flash","fl","Flash mode to use (off, auto, on, redeye, fillin, torch)",1}
 };
 
 static int cmdline_commands_size = sizeof(cmdline_commands) / sizeof(cmdline_commands[0]);
@@ -254,6 +258,21 @@ static struct
 
 static int next_frame_description_size = sizeof(next_frame_description) / sizeof(next_frame_description[0]);
 
+static struct
+{
+   const char *name;
+   MMAL_PARAM_FLASH_T mode;
+}flash_modes[] =
+{
+  {"off", MMAL_PARAM_FLASH_OFF},
+  {"auto", MMAL_PARAM_FLASH_AUTO},
+  {"on", MMAL_PARAM_FLASH_ON},
+  {"redeye",MMAL_PARAM_FLASH_REDEYE},
+  {"fillin",MMAL_PARAM_FLASH_FILLIN},
+  {"torch",MMAL_PARAM_FLASH_TORCH}
+};
+
+static int flash_modes_size = sizeof(flash_modes)/sizeof(flash_modes[0]);
 
 /**
  * Assign a default set of parameters to the state passed in
@@ -276,6 +295,7 @@ static void default_status(RASPISTILL_STATE *state)
    state->quality = 85;
    state->wantRAW = 0;
    state->linkname = NULL;
+   state->flash = MMAL_PARAM_FLASH_OFF;
    state->frameStart = 0;
    state->thumbnailConfig.enable = 1;
    state->thumbnailConfig.width = 64;
@@ -625,6 +645,26 @@ static int parse_cmdline(int argc, const char **argv, RASPISTILL_STATE *state)
          state->burstCaptureMode=1;
          break;
 
+      case CommandFlashMode:
+      {
+	int len = strlen(argv[i+1]);
+	valid = 0;
+	if ( len )
+	{
+		int j;
+		for (j=0;j<flash_modes_size;j++)
+		{
+			if ( strcmp(argv[i+1],flash_modes[j].name) == 0 )
+			{
+				state->flash = flash_modes[j].mode;
+				valid = 1;
+				i++;
+				break;
+			}
+		}
+	}
+	break;
+      }
       case CommandRestartInterval:
       {
          if (sscanf(argv[i + 1], "%u", &state->restart_interval) == 1)
@@ -1928,6 +1968,22 @@ int main(int argc, const char **argv)
                   {
                      mmal_port_parameter_set_boolean(state.camera_component->control,  MMAL_PARAMETER_CAMERA_BURST_CAPTURE, 1);
                   }
+
+		  if (state.flash != MMAL_PARAM_FLASH_OFF)
+		  {
+			if (state.common_settings.verbose)
+				fprintf(stderr, "Enabling flash mode %x\n", state.flash);
+
+			MMAL_PARAMETER_FLASH_T camera_flash = {{MMAL_PARAMETER_FLASH, sizeof(MMAL_PARAMETER_FLASH_T)}, state.flash};
+
+			status = mmal_port_parameter_set(state.camera_component->control, &camera_flash.hdr);
+
+			if ( status != MMAL_SUCCESS )
+			{
+				vcos_log_error("Could not set camera flash : error %d", status);
+				goto error;
+			}
+		  }
 
                   if(state.camera_parameters.enable_annotate)
                   {
