@@ -2,6 +2,13 @@ This version adds flash capability to raspistill via modified path from wofwof42
 
 https://www.raspberrypi.org/forums/viewtopic.php?f=43&t=83484&start=25
 
+Usage:
+sudo apt-get update
+sudo apt-get install build-essential git cmake
+git clone https://github.com/PaulMTC/userland.git
+cd userland
+./buildme
+
 This repository contains the source code for the ARM side libraries used on Raspberry Pi.
 These typically are installed in /opt/vc/lib and includes source for the ARM side code to interface to:
 EGL, mmal, GLESv2, vcos, openmaxil, vchiq_arm, bcm_host, WFC, OpenVG.
